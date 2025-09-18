@@ -5,7 +5,6 @@ from streamlit_cropper import st_cropper
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-import io
 
 # --- Header ---
 st.set_page_config(
@@ -26,45 +25,30 @@ Optimalkan analisis berbasis warna menggunakan spektrofotometri dengan mudah, ce
 - © Amin Fatoni 2025  
 """)
 
-# --- Session state untuk menyimpan data ---
+# Session state untuk menyimpan data
 if "data" not in st.session_state:
     st.session_state.data = []
 
-# --- File uploader custom ---
-uploaded_file = st.file_uploader(
-    "📷 Upload Foto Larutan/Tabung",
-    type=["jpg","jpeg","png"],
-    help="Di HP, klik akan otomatis menawarkan kamera atau galeri."
-)
+
+uploaded_file = st.file_uploader("Upload foto larutan/tabung", type=["jpg","jpeg","png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
 
-    # Mode pilihan
-    tab = st.radio(
-        "Pilih mode:",
-        ["Kalibrasi Standar", "Prediksi Sampel"],
-        index=0,
-        horizontal=True
-    )
+    tab = st.radio("Pilih mode:", ["Kalibrasi Standar", "Prediksi Sampel"])
 
     if tab == "Kalibrasi Standar":
-        st.subheader("Crop ROI Tabung Standar")
-        cropped_img = st_cropper(
-            image,
-            realtime_update=True,
-            box_color="red",
-            aspect_ratio=None,
-            help="Geser/ubah ukuran kotak crop untuk menyesuaikan tabung standar"
-        )
+        st.write("### Pilih ROI untuk 1 tabung standar (crop manual)")
+        cropped_img = st_cropper(image, realtime_update=True, box_color="red", aspect_ratio=None)
         cropped_arr = np.array(cropped_img)
         mean_rgb = cropped_arr.mean(axis=(0,1)).astype(int)
+
         st.image(cropped_img, caption="ROI Tabung Standar", use_container_width=True)
-        st.info(f"Rata-rata RGB ROI: {mean_rgb}")
+        st.write(f"Rata-rata RGB ROI: {mean_rgb}")
 
         with st.form("input_data"):
-            konsentrasi = st.number_input("Konsentrasi standar (mM)", min_value=0.0, step=0.1)
-            submitted = st.form_submit_button("💾 Simpan Data")
+            konsentrasi = st.number_input("Masukkan konsentrasi standar (misal mM)", min_value=0.0, step=0.1)
+            submitted = st.form_submit_button("Simpan Data")
             if submitted:
                 st.session_state.data.append({
                     "Konsentrasi": konsentrasi,
@@ -76,81 +60,127 @@ if uploaded_file:
 
     elif tab == "Prediksi Sampel":
         if not st.session_state.data:
-            st.warning("Belum ada data standar. Silakan buat kalibrasi dulu.")
+            st.warning("Belum ada data standar. Silakan buat kurva kalibrasi dulu.")
         else:
-            st.subheader("Crop ROI Tabung Sampel")
-            cropped_img = st_cropper(
-                image,
-                realtime_update=True,
-                box_color="blue",
-                aspect_ratio=None,
-                help="Geser/ubah ukuran kotak crop untuk menyesuaikan tabung sampel"
-            )
+            st.write("### Pilih ROI untuk tabung sampel")
+            cropped_img = st_cropper(image, realtime_update=True, box_color="blue", aspect_ratio=None)
             cropped_arr = np.array(cropped_img)
             mean_rgb = cropped_arr.mean(axis=(0,1)).astype(int)
-            st.image(cropped_img, caption="ROI Tabung Sampel", use_container_width=True)
-            st.info(f"Rata-rata RGB ROI Sampel: {mean_rgb}")
 
-            # Prediksi konsentrasi
+            st.image(cropped_img, caption="ROI Tabung Sampel", use_container_width=True)
+            st.write(f"Rata-rata RGB ROI Sampel: {mean_rgb}")
+
+            # Prediksi konsentrasi untuk semua channel
             df = pd.DataFrame(st.session_state.data)
             X = df["Konsentrasi"].values.reshape(-1, 1)
+
             results = []
-            for channel in ["R","G","B"]:
+            for channel in ["R", "G", "B"]:
                 y = df[channel].values
                 model = LinearRegression().fit(X, y)
                 coef = model.coef_[0]
                 intercept = model.intercept_
                 r2 = model.score(X, y)
+
                 y_sample = mean_rgb[["R","G","B"].index(channel)]
-                konsentrasi_pred = (y_sample - intercept)/coef
+                konsentrasi_pred = (y_sample - intercept) / coef
+
                 results.append({
                     "Channel": channel,
                     "Persamaan": f"y = {coef:.2f}x + {intercept:.2f}",
                     "R²": r2,
                     "Prediksi Konsentrasi": konsentrasi_pred
                 })
+
             results_df = pd.DataFrame(results)
-            st.subheader("Hasil Prediksi Sampel")
+            st.write("### Hasil Prediksi Sampel")
             st.dataframe(results_df, use_container_width=True)
 
-# --- Tampilkan data kalibrasi & kurva ---
+# Jika sudah ada data kalibrasi, tampilkan tabel + kurva
 if st.session_state.data:
     df = pd.DataFrame(st.session_state.data)
-    st.subheader("Data Kalibrasi")
+    st.write("### Data Kalibrasi")
     st.dataframe(df, use_container_width=True)
 
-    X = df["Konsentrasi"].values.reshape(-1,1)
+    # Plot kurva kalibrasi
+    X = df["Konsentrasi"].values.reshape(-1, 1)
     fig, ax = plt.subplots()
-    colors = {"R":"red","G":"green","B":"blue"}
-    for channel in ["R","G","B"]:
+    colors = {"R": "red", "G": "green", "B": "blue"}
+
+    for channel in ["R", "G", "B"]:
         y = df[channel].values
-        model = LinearRegression().fit(X,y)
+        model = LinearRegression().fit(X, y)
         y_pred = model.predict(X)
         coef = model.coef_[0]
         intercept = model.intercept_
-        r2 = model.score(X,y)
-        ax.scatter(df["Konsentrasi"],y,color=colors[channel],label=f"{channel} data")
-        ax.plot(df["Konsentrasi"],y_pred,color=colors[channel],linestyle="--",
-                label=f"{channel} fit: y={coef:.2f}x+{intercept:.2f}, R²={r2:.3f}")
-    ax.set_xlabel("Konsentrasi (mM)")
+        r2 = model.score(X, y)
+
+        ax.scatter(df["Konsentrasi"], y, color=colors[channel], label=f"{channel} data")
+        ax.plot(df["Konsentrasi"], y_pred, color=colors[channel], linestyle="--",
+                label=f"{channel} fit: y = {coef:.2f}x + {intercept:.2f}, R² = {r2:.3f}")
+
+    ax.set_xlabel("Konsentrasi")
     ax.set_ylabel("Intensitas RGB")
     ax.set_title("Kurva Kalibrasi RGB")
     ax.legend()
     st.pyplot(fig)
 
-# --- Download data ---
+import io
+
 with st.expander("📥 Download Data"):
     if st.session_state.data:
         df = pd.DataFrame(st.session_state.data)
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Data Kalibrasi (CSV)", data=csv_bytes, file_name="data_kalibrasi.csv")
+        st.write("### Data Kalibrasi")
+        st.dataframe(df, use_container_width=True)
+
+        # CSV kalibrasi
+        csv_bytes = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Data Kalibrasi (CSV)",
+            data=csv_bytes,
+            file_name="data_kalibrasi.csv",
+            mime="text/csv"
+        )
+
+        # Excel kalibrasi (butuh openpyxl)
         try:
             excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name="Kalibrasi", index=False)
-                if 'results_df' in locals():
-                    results_df.to_excel(writer, sheet_name="Prediksi", index=False)
-            st.download_button("⬇️ Gabungan (XLSX)", data=excel_buffer.getvalue(), file_name="kalibrasi_prediksi.xlsx")
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Kalibrasi', index=False)
+            st.download_button(
+                label="⬇️ Data Kalibrasi (XLSX)",
+                data=excel_buffer.getvalue(),
+                file_name="data_kalibrasi.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         except Exception:
             st.info("Install `openpyxl` untuk download Excel.")
+
+    if 'results_df' in locals():
+        st.write("### Hasil Prediksi Sampel")
+        st.dataframe(results_df, use_container_width=True)
+
+        # CSV prediksi
+        csv_pred = results_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Prediksi Sampel (CSV)",
+            data=csv_pred,
+            file_name="prediksi_sampel.csv",
+            mime="text/csv"
+        )
+
+        # Excel gabungan
+        try:
+            xls_buf = io.BytesIO()
+            with pd.ExcelWriter(xls_buf, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Kalibrasi', index=False)
+                results_df.to_excel(writer, sheet_name='Prediksi', index=False)
+            st.download_button(
+                label="⬇️ Gabungan Kalibrasi+Prediksi (XLSX)",
+                data=xls_buf.getvalue(),
+                file_name="kalibrasi_dan_prediksi.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception:
+            pass
 
