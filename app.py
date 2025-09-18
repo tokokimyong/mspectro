@@ -6,24 +6,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
-# --- Header ---
-st.set_page_config(
-    page_title="Spektrofotometer Alternatif",
-    page_icon="🧪",
-    layout="centered"
-)
-st.title("🧪 Spektrofotometer Alternatif")
-st.markdown("""
-**Deskripsi:**  
-Aplikasi ini membantu mengukur konsentrasi larutan dari foto larutan menggunakan pendekatan olah citra digital intensitas warna RGB.  
-**Fitur:**  
-- Upload foto larutan  
-- Crop ROI untuk standar & sampel  
-- Simpan data kalibrasi & prediksi otomatis  
-- Download hasil dalam CSV/XLSX  
-Optimalkan analisis berbasis warna menggunakan spektrofotometri dengan mudah, cepat, dan mobile-friendly
-- © Amin Fatoni 2025  
-""")
+st.title("Spektrofotometer Alternatif")
+
+
+# Session state untuk menyimpan data
+
+
+if "data" not in st.session_state:
+
+
+    st.session_state.data = []
 
 # Session state untuk menyimpan data
 if "data" not in st.session_state:
