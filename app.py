@@ -1,12 +1,19 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from streamlit_cropper import st_cropper
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
+import io
 
-st.title("Spektrofotometer Alternatif")
+# --- Header ---
+st.set_page_config(
+    page_title="Spektrofotometer Alternatif",
+    page_icon="🧪",
+    layout="centered"
+)
+st.title("🧪 Spektrofotometer Alternatif")
 st.markdown("""
 **Deskripsi:**  
 Aplikasi ini membantu mengukur konsentrasi larutan dari foto larutan menggunakan pendekatan olah citra digital intensitas warna RGB.  
@@ -15,33 +22,38 @@ Aplikasi ini membantu mengukur konsentrasi larutan dari foto larutan menggunakan
 - Crop ROI untuk standar & sampel  
 - Simpan data kalibrasi & prediksi otomatis  
 - Download hasil dalam CSV/XLSX  
-Optimalkan analisis berbasis warna menggunakan spektrofotometri dengan mudah, cepat, dan mobile-friendly
+Optimalkan analisis berbasis warna menggunakan spektrofotometri dengan mudah, cepat, dan mobile-friendly  
 - © Amin Fatoni 2025  
 """)
 
 # Session state untuk menyimpan data
-
-
-if "data" not in st.session_state:
-
-
-    st.session_state.data = []
-
-# Session state untuk menyimpan data
 if "data" not in st.session_state:
     st.session_state.data = []
 
-
+# --- Upload dan pre-proses gambar ---
 uploaded_file = st.file_uploader("Upload foto larutan/tabung", type=["jpg","jpeg","png"])
 
 if uploaded_file:
+    # 1) Buka & auto-rotate EXIF (fix rotasi HP/iPhone)
     image = Image.open(uploaded_file)
+    image = ImageOps.exif_transpose(image)
+    image = image.convert("RGB")  # pastikan RGB
 
+    # 2) Resize agar pas untuk cropper di layar HP
+    max_width = st.sidebar.slider("Resize max width untuk cropper (px)", 240, 800, 420)
+    if image.width > max_width:
+        ratio = max_width / float(image.width)
+        new_h = int(image.height * ratio)
+        image_for_crop = image.resize((max_width, new_h))
+    else:
+        image_for_crop = image
+
+    # --- Pilih mode ---
     tab = st.radio("Pilih mode:", ["Kalibrasi Standar", "Prediksi Sampel"])
 
     if tab == "Kalibrasi Standar":
         st.write("### Pilih ROI untuk 1 tabung standar (crop manual)")
-        cropped_img = st_cropper(image, realtime_update=True, box_color="red", aspect_ratio=None)
+        cropped_img = st_cropper(image_for_crop, realtime_update=True, box_color="red", aspect_ratio=None)
         cropped_arr = np.array(cropped_img)
         mean_rgb = cropped_arr.mean(axis=(0,1)).astype(int)
 
@@ -65,7 +77,7 @@ if uploaded_file:
             st.warning("Belum ada data standar. Silakan buat kurva kalibrasi dulu.")
         else:
             st.write("### Pilih ROI untuk tabung sampel")
-            cropped_img = st_cropper(image, realtime_update=True, box_color="blue", aspect_ratio=None)
+            cropped_img = st_cropper(image_for_crop, realtime_update=True, box_color="blue", aspect_ratio=None)
             cropped_arr = np.array(cropped_img)
             mean_rgb = cropped_arr.mean(axis=(0,1)).astype(int)
 
@@ -98,13 +110,12 @@ if uploaded_file:
             st.write("### Hasil Prediksi Sampel")
             st.dataframe(results_df, use_container_width=True)
 
-# Jika sudah ada data kalibrasi, tampilkan tabel + kurva
+# --- Plot kalibrasi jika ada data ---
 if st.session_state.data:
     df = pd.DataFrame(st.session_state.data)
     st.write("### Data Kalibrasi")
     st.dataframe(df, use_container_width=True)
 
-    # Plot kurva kalibrasi
     X = df["Konsentrasi"].values.reshape(-1, 1)
     fig, ax = plt.subplots()
     colors = {"R": "red", "G": "green", "B": "blue"}
@@ -127,62 +138,37 @@ if st.session_state.data:
     ax.legend()
     st.pyplot(fig)
 
-import io
-
+# --- Download ---
 with st.expander("📥 Download Data"):
     if st.session_state.data:
         df = pd.DataFrame(st.session_state.data)
-        st.write("### Data Kalibrasi")
-        st.dataframe(df, use_container_width=True)
 
         # CSV kalibrasi
         csv_bytes = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Data Kalibrasi (CSV)",
-            data=csv_bytes,
-            file_name="data_kalibrasi.csv",
-            mime="text/csv"
-        )
+        st.download_button("⬇️ Data Kalibrasi (CSV)", csv_bytes, "data_kalibrasi.csv", "text/csv")
 
         # Excel kalibrasi (butuh openpyxl)
         try:
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='Kalibrasi', index=False)
-            st.download_button(
-                label="⬇️ Data Kalibrasi (XLSX)",
-                data=excel_buffer.getvalue(),
-                file_name="data_kalibrasi.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.download_button("⬇️ Data Kalibrasi (XLSX)", excel_buffer.getvalue(),
+                               "data_kalibrasi.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception:
             st.info("Install `openpyxl` untuk download Excel.")
 
     if 'results_df' in locals():
-        st.write("### Hasil Prediksi Sampel")
-        st.dataframe(results_df, use_container_width=True)
-
-        # CSV prediksi
         csv_pred = results_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Prediksi Sampel (CSV)",
-            data=csv_pred,
-            file_name="prediksi_sampel.csv",
-            mime="text/csv"
-        )
+        st.download_button("⬇️ Prediksi Sampel (CSV)", csv_pred, "prediksi_sampel.csv", "text/csv")
 
-        # Excel gabungan
         try:
             xls_buf = io.BytesIO()
             with pd.ExcelWriter(xls_buf, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='Kalibrasi', index=False)
                 results_df.to_excel(writer, sheet_name='Prediksi', index=False)
-            st.download_button(
-                label="⬇️ Gabungan Kalibrasi+Prediksi (XLSX)",
-                data=xls_buf.getvalue(),
-                file_name="kalibrasi_dan_prediksi.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.download_button("⬇️ Gabungan Kalibrasi+Prediksi (XLSX)", xls_buf.getvalue(),
+                               "kalibrasi_dan_prediksi.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception:
             pass
-
