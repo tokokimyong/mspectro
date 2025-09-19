@@ -34,12 +34,11 @@ if "data" not in st.session_state:
 uploaded_file = st.file_uploader("Upload foto larutan/tabung", type=["jpg","jpeg","png"])
 
 if uploaded_file:
-    # 1) Buka & auto-rotate EXIF (fix rotasi HP/iPhone)
+    
     image = Image.open(uploaded_file)
-    image = ImageOps.exif_transpose(image)
     image = image.convert("RGB")  # pastikan RGB
 
-    # 2) Resize agar pas untuk cropper di layar HP
+    # Resize agar pas untuk cropper di layar HP
     max_width = st.sidebar.slider("Resize max width untuk cropper (px)", 240, 800, 420)
     if image.width > max_width:
         ratio = max_width / float(image.width)
